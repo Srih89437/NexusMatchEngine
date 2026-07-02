@@ -183,6 +183,14 @@ with col2:
                         except Exception as e:
                             st.error(f"Error calling CSV download API: {e}")
 
+                    # Candidate Score Comparison Chart
+                    st.write("### 📈 Candidate Score Comparison")
+                    chart_data = pd.DataFrame([
+                        {"Candidate": f"{res.get('name')} ({res.get('id')})", "Final Score": res.get("ltr_score", 0.0)}
+                        for res in results
+                    ])
+                    st.bar_chart(chart_data.set_index("Candidate"))
+
                 for res in results:
                     with st.container():
                         st.write(
