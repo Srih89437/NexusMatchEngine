@@ -61,7 +61,7 @@ if uploaded_file is not None:
         }
         try:
             response = requests.post(
-                f"{API_URL}/ingest/resume", files=files, timeout=5.0
+                f"{API_URL}/ingest/resume", files=files, timeout=30.0
             )
             if response.status_code == 200:
                 data = response.json()
