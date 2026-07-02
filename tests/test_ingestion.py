@@ -45,7 +45,8 @@ def test_candidate_profile_validation():
     assert profile.experience[0].company == "Google"
 
 
-def test_docling_parser_fallback_text(tmp_path):
+@patch("src.member1_ingestion.parser.DocumentConverter")
+def test_docling_parser_fallback_text(mock_converter_cls, tmp_path):
     test_file = tmp_path / "fallback.txt"
     test_file.write_text("This is fallback text content")
 
@@ -53,6 +54,7 @@ def test_docling_parser_fallback_text(tmp_path):
     with patch.object(parser.converter, "convert", side_effect=Exception("Docling error")):
         result = parser.parse_document(test_file)
         assert result["raw_text"] == "This is fallback text content"
+
 
 
 def test_celery_task_retry():
