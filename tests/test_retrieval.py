@@ -53,3 +53,21 @@ def test_qdrant_hybrid_search():
         assert len(results) > 0
         assert "score" in results[0]
         assert "payload" in results[0]
+
+
+def test_qdrant_setup_collection_indexes():
+    with patch("src.member2_retrieval.qdrant_client.QdrantClient") as mock_qdrant_class:
+        mock_client = mock_qdrant_class.return_value
+        mock_client.collection_exists.return_value = False
+        
+        from src.member2_retrieval.qdrant_client import QdrantVectorClient
+        
+        client = QdrantVectorClient()
+        client.setup_collection("test_collection")
+        
+        assert mock_client.create_collection.called
+        calls = mock_client.create_payload_index.call_args_list
+        assert len(calls) == 2
+        field_names = [call.kwargs["field_name"] for call in calls]
+        assert "skills" in field_names
+        assert "years_exp" in field_names

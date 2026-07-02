@@ -49,23 +49,54 @@ class DoclingLayoutParser:
             "size_bytes": file_path.stat().st_size,
         }
 
-        # Convert using Docling layout analyzer (includes OCR)
-        result = self.converter.convert(str(file_path))
-        doc = result.document
+        try:
+            # Convert using Docling layout analyzer (includes OCR)
+            result = self.converter.convert(str(file_path))
+            doc = result.document
 
-        # Export to markdown to preserve layout semantics
-        markdown_content = doc.export_to_markdown()
+            # Export to markdown to preserve layout semantics
+            markdown_content = doc.export_to_markdown()
 
-        # Extract headings and tables from document layout items
-        tables = []
-        headers = []
-        for item, _ in doc.iterate_items():
-            label = getattr(item, "label", None)
-            text = getattr(item, "text", None)
-            if label == "table":
-                tables.append(str(text or item))
-            elif label == "section_header" and text:
-                headers.append(text)
+            # Extract headings and tables from document layout items
+            tables = []
+            headers = []
+            for item, _ in doc.iterate_items():
+                label = getattr(item, "label", None)
+                text = getattr(item, "text", None)
+                if label == "table":
+                    tables.append(str(text or item))
+                elif label == "section_header" and text:
+                    headers.append(text)
+        except Exception as docling_err:
+            logger.warning(f"Docling failed to parse {file_path}, attempting fallback parsing: {docling_err}")
+            tables = []
+            headers = []
+            markdown_content = ""
+            
+            # Simple text/fallback parser
+            suffix = file_path.suffix.lower()
+            if suffix in [".txt", ".md", ".json"]:
+                try:
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                        markdown_content = f.read()
+                except Exception as e:
+                    logger.error(f"Text fallback parser failed: {e}")
+                    raise docling_err
+            elif suffix == ".pdf":
+                try:
+                    import pypdfium2 as pdfium
+                    pdf = pdfium.PdfDocument(str(file_path))
+                    text_parts = []
+                    for page in pdf:
+                        textpage = page.get_textpage()
+                        text_parts.append(textpage.get_text_range())
+                    markdown_content = "\n".join(text_parts)
+                except Exception as e:
+                    logger.error(f"PDF fallback parser failed: {e}")
+                    raise docling_err
+            else:
+                # Raise the original error if no fallback is possible
+                raise docling_err
 
         return {
             "metadata": metadata,

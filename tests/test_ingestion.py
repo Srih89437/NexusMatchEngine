@@ -43,3 +43,28 @@ def test_candidate_profile_validation():
     assert profile.name == "Jane Doe"
     assert len(profile.experience) == 1
     assert profile.experience[0].company == "Google"
+
+
+def test_docling_parser_fallback_text(tmp_path):
+    test_file = tmp_path / "fallback.txt"
+    test_file.write_text("This is fallback text content")
+
+    parser = DoclingLayoutParser()
+    with patch.object(parser.converter, "convert", side_effect=Exception("Docling error")):
+        result = parser.parse_document(test_file)
+        assert result["raw_text"] == "This is fallback text content"
+
+
+def test_celery_task_retry():
+    from src.member1_ingestion.tasks import ingest_resume_pipeline
+    with patch("src.member1_ingestion.tasks.DoclingLayoutParser") as mock_parser_cls:
+        mock_parser = mock_parser_cls.return_value
+        mock_parser.parse_document.side_effect = Exception("Parsing failed")
+        
+        ingest_resume_pipeline.retry = MagicMock()
+        try:
+            ingest_resume_pipeline("dummy_path.pdf")
+        except Exception:
+            pass
+            
+        assert ingest_resume_pipeline.retry.called

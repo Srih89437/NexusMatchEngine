@@ -54,10 +54,14 @@ class PostgresStateClient:
                 pass
             logger.info("Connected to PostgreSQL successfully.")
         except Exception as e:
+            from pathlib import Path
+            project_root = Path(__file__).resolve().parents[2]
+            db_path = project_root / "data" / "nexusmatch.db"
+            db_path.parent.mkdir(parents=True, exist_ok=True)
             logger.warning(
-                f"PostgreSQL connection to {self.db_url} failed: {e}. Falling back to SQLite in-memory database."
+                f"PostgreSQL connection to {self.db_url} failed: {e}. Falling back to file-based SQLite database at {db_path}."
             )
-            self.db_url = "sqlite:///:memory:"
+            self.db_url = f"sqlite:///{db_path}"
             self.engine = create_engine(self.db_url)
 
         self.session_factory = sessionmaker(bind=self.engine)

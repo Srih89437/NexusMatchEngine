@@ -52,9 +52,11 @@ env/
 
 # Relational and database cache files
 *.db
-*.sqlite3
+*.sqlite*
+scratch/
+data/qdrant_local/
 data/raw/job_descriptions/*
-!data/raw/job_descriptions/.gitkeep
+!.env.example
 data/raw/candidate_resumes/*
 !data/raw/candidate_resumes/.gitkeep
 data/processed/*

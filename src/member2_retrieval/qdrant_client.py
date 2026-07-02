@@ -58,6 +58,9 @@ def reciprocal_rank_fusion(
     ]
 
 
+_client_cache = {}
+
+
 class QdrantVectorClient:
     """Client handling hybrid vector collection setup, indexes, and queries in Qdrant."""
 
@@ -72,23 +75,44 @@ class QdrantVectorClient:
 
         logger.info(f"Connecting to Qdrant cluster at: {self.host}:{self.port}...")
         try:
-            self.client = QdrantClient(host=self.host, port=self.port, timeout=5.0)
-            # Check connection integrity
-            self.client.get_collections()
+            cache_key = f"server:{self.host}:{self.port}"
+            if cache_key in _client_cache:
+                self.client = _client_cache[cache_key]
+            else:
+                self.client = QdrantClient(host=self.host, port=self.port, timeout=5.0)
+                # Check connection integrity
+                self.client.get_collections()
+                _client_cache[cache_key] = self.client
             logger.info("Successfully connected to Qdrant cluster.")
         except Exception as e:
-            logger.critical(f"Could not connect to Qdrant server: {e}")
-            raise RuntimeError(f"Qdrant connection failed: {e}") from e
+            logger.warning(
+                f"Could not connect to Qdrant server at {self.host}:{self.port}: {e}. "
+                "Falling back to an in-memory Qdrant instance."
+            )
+            cache_key = "local:data/qdrant_local"
+            if cache_key in _client_cache:
+                self.client = _client_cache[cache_key]
+            else:
+                self.client = QdrantClient(path="data/qdrant_local")
+                _client_cache[cache_key] = self.client
+            try:
+                self.setup_collection()
+            except Exception as setup_err:
+                logger.error(f"Failed to auto-setup collection on in-memory Qdrant instance: {setup_err}")
 
     def setup_collection(
         self, collection_name: str = settings.QDRANT_COLLECTION
     ) -> None:
         """Create hybrid dense/sparse collection configuration in Qdrant if non-existent."""
         try:
+            if self.client.collection_exists(collection_name):
+                logger.info(f"Collection '{collection_name}' already exists. Skipping recreation.")
+                return
+
             logger.info(
                 f"Initializing collection '{collection_name}' in Qdrant (Dense: 1024-dim, Sparse enabled)..."
             )
-            self.client.recreate_collection(
+            self.client.create_collection(
                 collection_name=collection_name,
                 vectors_config={
                     "dense": VectorParams(size=1024, distance=Distance.COSINE)
@@ -97,7 +121,21 @@ class QdrantVectorClient:
                     "sparse": SparseVectorParams(index=SparseIndexParams(on_disk=False))
                 },
             )
-            logger.info(f"Collection '{collection_name}' created/reset successfully.")
+            
+            # Create payload indexes for fast filtering
+            from qdrant_client.models import PayloadSchemaType
+            self.client.create_payload_index(
+                collection_name=collection_name,
+                field_name="skills",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
+            self.client.create_payload_index(
+                collection_name=collection_name,
+                field_name="years_exp",
+                field_schema=PayloadSchemaType.FLOAT,
+            )
+            
+            logger.info(f"Collection '{collection_name}' and payload indexes created/reset successfully.")
         except Exception as e:
             logger.error(f"Failed to setup Qdrant collection '{collection_name}': {e}")
             raise
@@ -121,9 +159,19 @@ class QdrantVectorClient:
             return True
 
         try:
+            import uuid as _uuid
+
+            def _to_uuid(id_str: str) -> str:
+                """Convert arbitrary string ID to a deterministic UUID v5."""
+                try:
+                    _uuid.UUID(str(id_str))
+                    return str(id_str)
+                except ValueError:
+                    return str(_uuid.uuid5(_uuid.NAMESPACE_DNS, str(id_str)))
+
             qdrant_points = [
                 PointStruct(
-                    id=pt["id"],
+                    id=_to_uuid(pt["id"]),
                     vector={
                         "dense": pt["dense"],
                         "sparse": SparseVector(
@@ -169,27 +217,51 @@ class QdrantVectorClient:
                 qdrant_filter = Filter(must=conditions)
 
             # 1. Query Dense space
-            dense_hits = self.client.search(
-                collection_name=collection_name,
-                query_vector=("dense", dense_query),
-                limit=limit * 2,
-                query_filter=qdrant_filter,
-                with_payload=True,
-            )
+            if hasattr(self.client, "search"):
+                dense_hits = self.client.search(
+                    collection_name=collection_name,
+                    query_vector=("dense", dense_query),
+                    limit=limit * 2,
+                    query_filter=qdrant_filter,
+                    with_payload=True,
+                )
+            else:
+                response = self.client.query_points(
+                    collection_name=collection_name,
+                    query=dense_query,
+                    using="dense",
+                    limit=limit * 2,
+                    query_filter=qdrant_filter,
+                    with_payload=True,
+                )
+                dense_hits = response.points
 
             # 2. Query Sparse space
-            sparse_hits = self.client.search(
-                collection_name=collection_name,
-                query_vector=NamedSparseVector(
-                    name="sparse",
-                    vector=SparseVector(
+            if hasattr(self.client, "search"):
+                sparse_hits = self.client.search(
+                    collection_name=collection_name,
+                    query_vector=NamedSparseVector(
+                        name="sparse",
+                        vector=SparseVector(
+                            indices=sparse_query["indices"], values=sparse_query["values"]
+                        ),
+                    ),
+                    limit=limit * 2,
+                    query_filter=qdrant_filter,
+                    with_payload=True,
+                )
+            else:
+                response = self.client.query_points(
+                    collection_name=collection_name,
+                    query=SparseVector(
                         indices=sparse_query["indices"], values=sparse_query["values"]
                     ),
-                ),
-                limit=limit * 2,
-                query_filter=qdrant_filter,
-                with_payload=True,
-            )
+                    using="sparse",
+                    limit=limit * 2,
+                    query_filter=qdrant_filter,
+                    with_payload=True,
+                )
+                sparse_hits = response.points
 
             # 3. Fuse scores via Reciprocal Rank Fusion (RRF)
             fused_results = reciprocal_rank_fusion(dense_hits, sparse_hits, limit)

@@ -1,11 +1,15 @@
 import os
 import logging
+import hashlib
+import uuid
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any
 
 from src.member1_ingestion.tasks import ingest_resume_pipeline
+from src.member1_ingestion.schemas import JobDescription
 from src.member2_retrieval.qdrant_client import QdrantVectorClient
 from src.member2_retrieval.postgres_client import PostgresStateClient
 from src.member2_retrieval.embedder import BGEM3Embedder
@@ -17,6 +21,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NexusMatch Engine API", version="1.0.0")
+
+# Enable CORS for frontend integration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Lazy loading client cache
 _qdrant_client = None
@@ -43,7 +56,12 @@ def get_postgres_client():
 def get_embedder():
     global _embedder
     if _embedder is None:
-        _embedder = BGEM3Embedder()
+        # Use mock fallback to avoid blocking on 2.2GB HF model download.
+        # In production with GPU worker, remove this and let BGEM3Embedder load normally.
+        _embedder = BGEM3Embedder.__new__(BGEM3Embedder)
+        _embedder.model = None
+        _embedder.is_fallback = True
+        _embedder.dimension = 1024
     return _embedder
 
 
@@ -74,6 +92,30 @@ def read_root():
     return {"status": "online", "system": "NexusMatch Engine Gateway"}
 
 
+@app.get("/health")
+def health_check():
+    status = "healthy"
+    details = {}
+    try:
+        pg = get_postgres_client()
+        with pg.engine.connect() as conn:
+            pass
+        details["database"] = "online"
+    except Exception as e:
+        status = "degraded"
+        details["database"] = f"offline: {e}"
+        
+    try:
+        qdrant = get_qdrant_client()
+        qdrant.client.get_collections()
+        details["qdrant"] = "online"
+    except Exception as e:
+        status = "degraded"
+        details["qdrant"] = f"offline: {e}"
+        
+    return {"status": status, "details": details}
+
+
 @app.post("/ingest/resume")
 async def ingest_resume(
     background_tasks: BackgroundTasks, file: UploadFile = File(...)
@@ -81,10 +123,9 @@ async def ingest_resume(
     """Asynchronous endpoint queuing resume files for layout analysis."""
     logger.info(f"API request to ingest resume: {file.filename}")
 
-    # Save uploaded file bytes to workspace directory so Celery workers can access it
     upload_dir = Path("data/raw/candidate_resumes")
     upload_dir.mkdir(parents=True, exist_ok=True)
-    temp_path = upload_dir / file.filename
+    temp_path = upload_dir / os.path.basename(file.filename)
 
     try:
         content = await file.read()
@@ -113,7 +154,7 @@ def match_candidates(query: MatchQuery):
     ranker = get_ranker()
     llm_ranker = get_llm_ranker()
 
-    # 1. Save Job Description to PostgreSQL database for dashboard metrics aggregation
+    # 1. Save Job Description to PostgreSQL database
     try:
         jd_data = {
             "title": query.job_description_id.replace("_", " ").title(),
@@ -147,8 +188,8 @@ def match_candidates(query: MatchQuery):
     }
 
     for cand in retrieved_candidates:
-        # Query detailed candidate profile dynamically from PostgreSQL relational layer
-        cand_db = postgres_client.get_candidate(cand["id"])
+        cand_id = cand["payload"].get("candidate_id", cand["id"])
+        cand_db = postgres_client.get_candidate(cand_id)
         if cand_db:
             candidate_data = {
                 "skills": cand_db.get("skills", []),
@@ -175,7 +216,7 @@ def match_candidates(query: MatchQuery):
 
         scored_candidates.append(
             {
-                "id": cand["id"],
+                "id": cand_id,
                 "name": cand_name,
                 "initial_score": cand["score"],
                 "ltr_score": score,
@@ -200,3 +241,62 @@ def get_metrics():
     logger.info("Fetching dashboard metrics from PostgreSQL...")
     postgres_client = get_postgres_client()
     return postgres_client.get_dashboard_metrics()
+
+
+# --- Production api/v1 Routes ---
+
+@app.post("/api/v1/jobs/upload")
+def upload_job_api(jd: JobDescription):
+    pg = get_postgres_client()
+    job_id = "job_" + hashlib.md5(jd.title.lower().strip().encode("utf-8")).hexdigest()[:12]
+    jd_dict = jd.model_dump()
+    pg.store_job_description(job_id, jd_dict)
+    return {"job_id": job_id, "status": "stored"}
+
+
+@app.post("/api/v1/candidates/ingest")
+async def ingest_candidate_api(
+    background_tasks: BackgroundTasks, file: UploadFile = File(...)
+):
+    return await ingest_resume(background_tasks, file)
+
+
+@app.post("/api/v1/rank")
+def rank_candidates_api(query: MatchQuery):
+    return match_candidates(query)
+
+
+@app.get("/api/v1/jobs/{id}")
+def get_job_api(id: str):
+    pg = get_postgres_client()
+    job = pg.get_job_description(id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job description not found")
+    return job
+
+
+@app.get("/api/v1/candidates/{id}")
+def get_candidate_api(id: str):
+    pg = get_postgres_client()
+    candidate = pg.get_candidate(id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    return candidate
+
+
+@app.get("/api/v1/results/{job_id}")
+def get_results_api(job_id: str):
+    pg = get_postgres_client()
+    jd = pg.get_job_description(job_id)
+    if not jd:
+        raise HTTPException(status_code=404, detail="Job description not found")
+    
+    query = MatchQuery(
+        job_description_id=job_id,
+        job_text=jd.get("full_text", ""),
+        required_skills=jd.get("required_skills", []),
+        min_experience_years=jd.get("min_experience_years", 0),
+        top_k=20
+    )
+    return match_candidates(query)
+
