@@ -19,3 +19,4 @@ docling
 pypdfium2
 FlagEmbedding
 httpx==0.27.2
+openpyxl

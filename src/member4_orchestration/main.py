@@ -5,8 +5,12 @@ import uuid
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any
+from io import BytesIO
+import openpyxl
+
 
 from src.member1_ingestion.tasks import ingest_resume_pipeline
 from src.member1_ingestion.schemas import JobDescription
@@ -302,3 +306,114 @@ def get_results_api(job_id: str):
         top_k=20,
     )
     return match_candidates(query)
+
+
+@app.get("/api/v1/results/{job_id}/download")
+def download_results_xlsx(job_id: str):
+    pg = get_postgres_client()
+    jd = pg.get_job_description(job_id)
+    if not jd:
+        raise HTTPException(status_code=404, detail="Job description not found")
+
+    query = MatchQuery(
+        job_description_id=job_id,
+        job_text=jd.get("full_text", ""),
+        required_skills=jd.get("required_skills", []),
+        min_experience_years=jd.get("min_experience_years", 0),
+        top_k=20,
+    )
+
+    try:
+        ranked_res = match_candidates(query)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ranking pipeline failure: {e}")
+
+    results = ranked_res.get("results", [])
+    if not results:
+        raise HTTPException(
+            status_code=404, detail="No ranked candidates found for this job ID"
+        )
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Ranked Candidates"
+
+    headers = [
+        "Rank",
+        "Candidate ID",
+        "Candidate Name",
+        "Initial Retrieval Score",
+        "LTR Score",
+        "Skills",
+        "Experience",
+        "Education",
+        "SHAP Summary / Important Features",
+        "LLM Explanation",
+    ]
+    ws.append(headers)
+
+    for res in results:
+        cand_id = res.get("id")
+        cand_db = pg.get_candidate(cand_id)
+
+        skills_str = ""
+        exp_str = ""
+        edu_str = ""
+
+        if cand_db:
+            skills_str = ", ".join(cand_db.get("skills", []))
+
+            exp_list = cand_db.get("experience", [])
+            exp_parts = []
+            for exp in exp_list:
+                role = exp.get("role", "Engineer")
+                dur = exp.get("duration_months", 0)
+                exp_parts.append(f"{role} ({dur} months)")
+            exp_str = "; ".join(exp_parts)
+
+            edu_list = cand_db.get("education", [])
+            edu_parts = []
+            for edu in edu_list:
+                deg = edu.get("degree", "Degree")
+                inst = edu.get("institution", "Institution")
+                edu_parts.append(f"{deg} from {inst}")
+            edu_str = "; ".join(edu_parts)
+
+        shap_values = res.get("shap_values", {})
+        shap_parts = []
+        sorted_shap = sorted(shap_values.items(), key=lambda x: abs(x[1]), reverse=True)
+        for feat, val in sorted_shap[:5]:
+            sign = "+" if val >= 0 else ""
+            shap_parts.append(f"{feat} ({sign}{val:.4f})")
+        shap_str = ", ".join(shap_parts)
+
+        row = [
+            res.get("listwise_rank"),
+            cand_id,
+            res.get("name"),
+            res.get("initial_score"),
+            res.get("ltr_score"),
+            skills_str,
+            exp_str,
+            edu_str,
+            shap_str,
+            res.get("llm_rationale") or res.get("reasoning", ""),
+        ]
+        ws.append(row)
+
+    # Autoscale columns
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or "")) for cell in col)
+        col_letter = openpyxl.utils.get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = max(max_len + 2, 10)
+
+    stream = BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+
+    filename = f"nexusmatch_results_{job_id}.xlsx"
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

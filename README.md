@@ -66,3 +66,23 @@ graph TD
    ```bash
    streamlit run src/member4_orchestration/app_ui.py
    ```
+
+---
+
+## 📊 XLSX Export Feature
+
+Recruiters and admins can download ranked candidate profiles as a fully formatted Excel spreadsheet directly from the Streamlit UI or via the API:
+
+- **API Endpoint**: `GET /api/v1/results/{job_id}/download`
+- **Spreadsheet Columns**:
+  - `Rank` (Listwise LLM Rank)
+  - `Candidate ID`
+  - `Candidate Name`
+  - `Initial Retrieval Score` (Hybrid lexical/semantic vector match)
+  - `LTR Score` (LightGBM LambdaMART ranker score)
+  - `Skills` (Comma-separated list of candidate skills)
+  - `Experience` (Chronological career history summary)
+  - `Education` (Institutions and degrees)
+  - `SHAP Summary / Important Features` (Top features influencing LTR rank)
+  - `LLM Explanation` (Instruct-verified rationale)
+

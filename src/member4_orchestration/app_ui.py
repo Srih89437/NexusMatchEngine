@@ -119,6 +119,25 @@ with col2:
                     st.warning(
                         "No matching candidates found in the vector index. Upload resumes first to build the database!"
                     )
+                else:
+                    # Provide XLSX download button
+                    try:
+                        xlsx_res = requests.get(
+                            f"{API_URL}/api/v1/results/{job_id}/download", timeout=10.0
+                        )
+                        if xlsx_res.status_code == 200:
+                            st.download_button(
+                                label="📥 Download Ranked Candidates (.xlsx)",
+                                data=xlsx_res.content,
+                                file_name=f"nexusmatch_results_{job_id}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            )
+                        else:
+                            st.error(
+                                f"Failed to generate Excel download: {xlsx_res.text}"
+                            )
+                    except Exception as e:
+                        st.error(f"Error calling download API: {e}")
 
                 for res in results:
                     with st.container():
