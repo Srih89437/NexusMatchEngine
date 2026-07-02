@@ -77,14 +77,18 @@ col1, col2 = st.columns([1, 1])
 with col1:
     st.header("📋 Job Requirements")
     job_id = st.text_input("Job ID", value="", placeholder="e.g. job_data_science_01")
-    job_title = st.text_input("Target Job Title", value="", placeholder="e.g. Senior Data Scientist")
+    job_title = st.text_input(
+        "Target Job Title", value="", placeholder="e.g. Senior Data Scientist"
+    )
     jd_text = st.text_area(
         "Unstructured Job Description",
         value="",
         placeholder="Enter job description details here...",
     )
     skills_required = st.text_input(
-        "Required Skills (Comma separated)", value="", placeholder="e.g. Python, Machine Learning, Qdrant"
+        "Required Skills (Comma separated)",
+        value="",
+        placeholder="e.g. Python, Machine Learning, Qdrant",
     )
     min_exp = st.slider("Min Years of Experience", 0, 15, 5)
 
