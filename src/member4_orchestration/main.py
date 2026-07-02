@@ -104,7 +104,7 @@ def health_check():
     except Exception as e:
         status = "degraded"
         details["database"] = f"offline: {e}"
-        
+
     try:
         qdrant = get_qdrant_client()
         qdrant.client.get_collections()
@@ -112,7 +112,7 @@ def health_check():
     except Exception as e:
         status = "degraded"
         details["qdrant"] = f"offline: {e}"
-        
+
     return {"status": status, "details": details}
 
 
@@ -245,10 +245,13 @@ def get_metrics():
 
 # --- Production api/v1 Routes ---
 
+
 @app.post("/api/v1/jobs/upload")
 def upload_job_api(jd: JobDescription):
     pg = get_postgres_client()
-    job_id = "job_" + hashlib.md5(jd.title.lower().strip().encode("utf-8")).hexdigest()[:12]
+    job_id = (
+        "job_" + hashlib.md5(jd.title.lower().strip().encode("utf-8")).hexdigest()[:12]
+    )
     jd_dict = jd.model_dump()
     pg.store_job_description(job_id, jd_dict)
     return {"job_id": job_id, "status": "stored"}
@@ -290,13 +293,12 @@ def get_results_api(job_id: str):
     jd = pg.get_job_description(job_id)
     if not jd:
         raise HTTPException(status_code=404, detail="Job description not found")
-    
+
     query = MatchQuery(
         job_description_id=job_id,
         job_text=jd.get("full_text", ""),
         required_skills=jd.get("required_skills", []),
         min_experience_years=jd.get("min_experience_years", 0),
-        top_k=20
+        top_k=20,
     )
     return match_candidates(query)
-

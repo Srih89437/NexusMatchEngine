@@ -17,7 +17,12 @@ logger = logging.getLogger(__name__)
 class BGEM3Embedder:
     """BGE-M3 multi-vector embedding engine supporting Dense, Sparse, & Late-interaction tensors."""
 
-    def __init__(self, model_name: Optional[str] = None, use_fp16: bool = False, device: Optional[str] = None):
+    def __init__(
+        self,
+        model_name: Optional[str] = None,
+        use_fp16: bool = False,
+        device: Optional[str] = None,
+    ):
         self.model_name = model_name or "BAAI/bge-m3"
         self.use_fp16 = use_fp16
         self.device = device
@@ -36,9 +41,13 @@ class BGEM3Embedder:
         self.device = device
         self.dimension = 1024
 
-        logger.info(f"Loading native BGE-M3 model: {self.model_name} on device: {self.device or 'auto'}...")
+        logger.info(
+            f"Loading native BGE-M3 model: {self.model_name} on device: {self.device or 'auto'}..."
+        )
         try:
-            self.model = BGEM3FlagModel(self.model_name, use_fp16=self.use_fp16, device=self.device)
+            self.model = BGEM3FlagModel(
+                self.model_name, use_fp16=self.use_fp16, device=self.device
+            )
             logger.info("BGE-M3 Model loaded natively successfully.")
             self.is_fallback = False
         except Exception as e:
@@ -58,6 +67,7 @@ class BGEM3Embedder:
         """
         if self.is_fallback:
             import numpy as np
+
             results = []
             for text in texts:
                 hashed = int(hashlib.md5(text.encode("utf-8")).hexdigest(), 16)
@@ -70,7 +80,9 @@ class BGEM3Embedder:
                 results.append(
                     {"dense": dense, "sparse": sparse, "late_interaction": colbert}
                 )
-            logger.info(f"Generated mock deterministic BGE-M3 embeddings for {len(texts)} texts.")
+            logger.info(
+                f"Generated mock deterministic BGE-M3 embeddings for {len(texts)} texts."
+            )
             return results
 
         # Encode text using the native BGE-M3 model

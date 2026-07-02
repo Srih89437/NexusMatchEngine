@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 
 try:
     import lightgbm as lgb
+
     LIGHTGBM_AVAILABLE = True
 except ImportError:
     LIGHTGBM_AVAILABLE = False
@@ -133,14 +134,19 @@ class LightGBMRanker:
             try:
                 import shap
                 import numpy as np
+
                 explainer = shap.TreeExplainer(self.gbm_model)
                 row = [features.get(k, 0.0) for k in features_keys]
                 shap_values = explainer.shap_values(np.array([row]))
                 if isinstance(shap_values, list):
                     shap_values = shap_values[0]
-                return {k: float(shap_values[0][idx]) for idx, k in enumerate(features_keys)}
+                return {
+                    k: float(shap_values[0][idx]) for idx, k in enumerate(features_keys)
+                }
             except Exception as e:
-                logger.warning(f"Native SHAP computation failed: {e}. Falling back to dynamic baseline attribution.")
+                logger.warning(
+                    f"Native SHAP computation failed: {e}. Falling back to dynamic baseline attribution."
+                )
 
         # Baselines representing typical/average candidate parameters
         baseline = {

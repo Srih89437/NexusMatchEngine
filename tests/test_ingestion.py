@@ -51,22 +51,24 @@ def test_docling_parser_fallback_text(mock_converter_cls, tmp_path):
     test_file.write_text("This is fallback text content")
 
     parser = DoclingLayoutParser()
-    with patch.object(parser.converter, "convert", side_effect=Exception("Docling error")):
+    with patch.object(
+        parser.converter, "convert", side_effect=Exception("Docling error")
+    ):
         result = parser.parse_document(test_file)
         assert result["raw_text"] == "This is fallback text content"
 
 
-
 def test_celery_task_retry():
     from src.member1_ingestion.tasks import ingest_resume_pipeline
+
     with patch("src.member1_ingestion.tasks.DoclingLayoutParser") as mock_parser_cls:
         mock_parser = mock_parser_cls.return_value
         mock_parser.parse_document.side_effect = Exception("Parsing failed")
-        
+
         ingest_resume_pipeline.retry = MagicMock()
         try:
             ingest_resume_pipeline("dummy_path.pdf")
         except Exception:
             pass
-            
+
         assert ingest_resume_pipeline.retry.called

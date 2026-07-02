@@ -68,11 +68,13 @@ class DoclingLayoutParser:
                 elif label == "section_header" and text:
                     headers.append(text)
         except Exception as docling_err:
-            logger.warning(f"Docling failed to parse {file_path}, attempting fallback parsing: {docling_err}")
+            logger.warning(
+                f"Docling failed to parse {file_path}, attempting fallback parsing: {docling_err}"
+            )
             tables = []
             headers = []
             markdown_content = ""
-            
+
             # Simple text/fallback parser
             suffix = file_path.suffix.lower()
             if suffix in [".txt", ".md", ".json"]:
@@ -85,6 +87,7 @@ class DoclingLayoutParser:
             elif suffix == ".pdf":
                 try:
                     import pypdfium2 as pdfium
+
                     pdf = pdfium.PdfDocument(str(file_path))
                     text_parts = []
                     for page in pdf:

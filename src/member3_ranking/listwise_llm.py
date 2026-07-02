@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 try:
     import instructor
     from openai import OpenAI
+
     LLM_AVAILABLE = True
 except ImportError:
     LLM_AVAILABLE = False
@@ -75,7 +76,7 @@ class ListwiseLLMRanker:
             return "Aligned based on verified technical parameters."
 
         # Extract capitalized proper nouns (e.g. "Python", "Google", "FastAPI")
-        words = re.findall(r'\b[A-Z][a-zA-Z0-9+#]*\b', rationale)
+        words = re.findall(r"\b[A-Z][a-zA-Z0-9+#]*\b", rationale)
         resume_lower = raw_resume_text.lower()
         unverified_claims = []
 
@@ -87,7 +88,9 @@ class ListwiseLLMRanker:
                 unverified_claims.append(word)
 
         if unverified_claims:
-            logger.warning(f"Rejecting unverified claims in rationale: {unverified_claims}")
+            logger.warning(
+                f"Rejecting unverified claims in rationale: {unverified_claims}"
+            )
             return "Aligned based on verified technical parameters matching the candidate profile."
 
         return rationale
@@ -108,6 +111,7 @@ class ListwiseLLMRanker:
         )
 
         from src.member2_retrieval.postgres_client import PostgresStateClient
+
         pg_client = PostgresStateClient()
 
         if self.client is not None:
@@ -151,12 +155,16 @@ class ListwiseLLMRanker:
                     if cid in candidates_map:
                         cand = candidates_map[cid]
                         cand["listwise_rank"] = idx + 1
-                        
-                        raw_rationale = rationales.get(cid, "Aligned based on technical parameters.")
+
+                        raw_rationale = rationales.get(
+                            cid, "Aligned based on technical parameters."
+                        )
                         cand_db = pg_client.get_candidate(cid)
                         raw_text = cand_db.get("raw_text", "") if cand_db else ""
-                        
-                        cand["llm_rationale"] = self.verify_rationale(raw_rationale, raw_text)
+
+                        cand["llm_rationale"] = self.verify_rationale(
+                            raw_rationale, raw_text
+                        )
                         reranked_candidates.append(cand)
 
                 # Add any candidates missed by the LLM at the end
@@ -165,9 +173,11 @@ class ListwiseLLMRanker:
                         cand["listwise_rank"] = len(reranked_candidates) + 1
                         cand_db = pg_client.get_candidate(cid)
                         raw_text = cand_db.get("raw_text", "") if cand_db else ""
-                        
+
                         fallback_rationale = f"Candidate ranked by LTR score of {cand.get('ltr_score', 0.0):.2f}."
-                        cand["llm_rationale"] = self.verify_rationale(fallback_rationale, raw_text)
+                        cand["llm_rationale"] = self.verify_rationale(
+                            fallback_rationale, raw_text
+                        )
                         reranked_candidates.append(cand)
 
                 return reranked_candidates
@@ -185,10 +195,8 @@ class ListwiseLLMRanker:
             cand["listwise_rank"] = idx + 1
             cand_db = pg_client.get_candidate(cand["id"])
             raw_text = cand_db.get("raw_text", "") if cand_db else ""
-            
-            fallback_rationale = (
-                f"Candidate ranked by LightGBM model score of {cand.get('ltr_score', 0.0):.2f} (LLM ranker fallback)."
-            )
+
+            fallback_rationale = f"Candidate ranked by LightGBM model score of {cand.get('ltr_score', 0.0):.2f} (LLM ranker fallback)."
             cand["llm_rationale"] = self.verify_rationale(fallback_rationale, raw_text)
 
         return sorted_candidates

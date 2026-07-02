@@ -98,7 +98,9 @@ class QdrantVectorClient:
             try:
                 self.setup_collection()
             except Exception as setup_err:
-                logger.error(f"Failed to auto-setup collection on in-memory Qdrant instance: {setup_err}")
+                logger.error(
+                    f"Failed to auto-setup collection on in-memory Qdrant instance: {setup_err}"
+                )
 
     def setup_collection(
         self, collection_name: str = settings.QDRANT_COLLECTION
@@ -106,7 +108,9 @@ class QdrantVectorClient:
         """Create hybrid dense/sparse collection configuration in Qdrant if non-existent."""
         try:
             if self.client.collection_exists(collection_name):
-                logger.info(f"Collection '{collection_name}' already exists. Skipping recreation.")
+                logger.info(
+                    f"Collection '{collection_name}' already exists. Skipping recreation."
+                )
                 return
 
             logger.info(
@@ -121,9 +125,10 @@ class QdrantVectorClient:
                     "sparse": SparseVectorParams(index=SparseIndexParams(on_disk=False))
                 },
             )
-            
+
             # Create payload indexes for fast filtering
             from qdrant_client.models import PayloadSchemaType
+
             self.client.create_payload_index(
                 collection_name=collection_name,
                 field_name="skills",
@@ -134,8 +139,10 @@ class QdrantVectorClient:
                 field_name="years_exp",
                 field_schema=PayloadSchemaType.FLOAT,
             )
-            
-            logger.info(f"Collection '{collection_name}' and payload indexes created/reset successfully.")
+
+            logger.info(
+                f"Collection '{collection_name}' and payload indexes created/reset successfully."
+            )
         except Exception as e:
             logger.error(f"Failed to setup Qdrant collection '{collection_name}': {e}")
             raise
@@ -243,7 +250,8 @@ class QdrantVectorClient:
                     query_vector=NamedSparseVector(
                         name="sparse",
                         vector=SparseVector(
-                            indices=sparse_query["indices"], values=sparse_query["values"]
+                            indices=sparse_query["indices"],
+                            values=sparse_query["values"],
                         ),
                     ),
                     limit=limit * 2,

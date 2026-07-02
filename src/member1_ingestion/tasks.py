@@ -29,43 +29,58 @@ celery_app.conf.task_always_eager = True
 celery_app.conf.task_eager_propagates = True
 
 
-
 def extract_heuristic_profile(raw_text: str) -> CandidateProfile:
     import re
+
     # Simple email finder
-    email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', raw_text)
+    email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", raw_text)
     email = email_match.group(0) if email_match else None
 
     # Simple phone finder
-    phone_match = re.search(r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}', raw_text)
+    phone_match = re.search(r"\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}", raw_text)
     phone = phone_match.group(0) if phone_match else None
 
     # Simple name finder (e.g., first non-empty line)
-    lines = [line.strip() for line in raw_text.split('\n') if line.strip()]
+    lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
     name = lines[0] if lines else "Unknown Candidate"
     if len(name) > 50:
         name = "Unknown Candidate"
 
     # Common skills lookup
     common_skills = [
-        "Python", "FastAPI", "PostgreSQL", "Redis", "Docker", "Machine Learning", 
-        "Qdrant", "SQL", "Git", "Celery", "Pandas", "NumPy", "AWS", "PyTorch"
+        "Python",
+        "FastAPI",
+        "PostgreSQL",
+        "Redis",
+        "Docker",
+        "Machine Learning",
+        "Qdrant",
+        "SQL",
+        "Git",
+        "Celery",
+        "Pandas",
+        "NumPy",
+        "AWS",
+        "PyTorch",
     ]
     skills = []
     for skill in common_skills:
-        if re.search(r'\b' + re.escape(skill) + r'\b', raw_text, re.IGNORECASE):
+        if re.search(r"\b" + re.escape(skill) + r"\b", raw_text, re.IGNORECASE):
             skills.append(skill)
 
     # Heuristic experience extraction
     from src.member1_ingestion.schemas import WorkExperience
+
     experience = []
     exp_years = 5 if "Senior" in raw_text or "Lead" in raw_text else 2
-    experience.append(WorkExperience(
-        company="Previous Company",
-        role="Software Engineer",
-        duration_months=exp_years * 12,
-        description="Software development experience."
-    ))
+    experience.append(
+        WorkExperience(
+            company="Previous Company",
+            role="Software Engineer",
+            duration_months=exp_years * 12,
+            description="Software development experience.",
+        )
+    )
 
     return CandidateProfile(
         name=name,
@@ -73,7 +88,7 @@ def extract_heuristic_profile(raw_text: str) -> CandidateProfile:
         phone=phone,
         skills=skills,
         experience=experience,
-        education=[]
+        education=[],
     )
 
 
@@ -81,7 +96,7 @@ def extract_heuristic_profile(raw_text: str) -> CandidateProfile:
     name="tasks.ingest_resume_pipeline",
     bind=True,
     max_retries=3,
-    default_retry_delay=10
+    default_retry_delay=10,
 )
 def ingest_resume_pipeline(self, file_path_str: str) -> dict:
     """Background Celery task mapping unstructured files through parsing and schema validations.
@@ -113,7 +128,9 @@ def ingest_resume_pipeline(self, file_path_str: str) -> dict:
         api_key = settings.VLLM_API_KEY or settings.OPENAI_API_KEY
         use_fallback = False
         if not api_key or api_key == "mock-key-for-development":
-            logger.warning("Mock or missing API keys detected. Falling back to heuristic profile extraction.")
+            logger.warning(
+                "Mock or missing API keys detected. Falling back to heuristic profile extraction."
+            )
             use_fallback = True
 
         if use_fallback:
@@ -146,7 +163,9 @@ def ingest_resume_pipeline(self, file_path_str: str) -> dict:
                 )
                 logger.info(f"LLM successfully extracted profile for: {profile.name}")
             except Exception as e:
-                logger.warning(f"Instructor LLM extraction failed: {e}. Falling back to heuristic profile extraction.")
+                logger.warning(
+                    f"Instructor LLM extraction failed: {e}. Falling back to heuristic profile extraction."
+                )
                 profile = extract_heuristic_profile(raw_text)
 
         # Generate unique candidate ID based on email

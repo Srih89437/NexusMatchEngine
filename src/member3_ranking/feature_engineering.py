@@ -49,7 +49,7 @@ def build_ltr_features(
     job: Dict[str, Any],
     semantic_score: float,
     dense_score: Optional[float] = None,
-    sparse_score: Optional[float] = None
+    sparse_score: Optional[float] = None,
 ) -> Dict[str, float]:
     """Transform candidate profile and job requirements into raw normalized LTR features."""
     logger.info("Computing features for ranking model pipeline...")
@@ -58,7 +58,9 @@ def build_ltr_features(
     jd_skills = job.get("required_skills", [])
 
     # 1. Skill Match Score (intersection over required)
-    common_skills = set(c.lower() for c in cand_skills).intersection(set(j.lower() for j in jd_skills))
+    common_skills = set(c.lower() for c in cand_skills).intersection(
+        set(j.lower() for j in jd_skills)
+    )
     skill_match_score = len(common_skills) / max(len(jd_skills), 1)
     skill_match_score = min(skill_match_score, 1.0)
 
@@ -68,7 +70,7 @@ def build_ltr_features(
     cand_exp = total_months / 12.0
     jd_exp = float(job.get("min_experience_years", 0))
     exp_ratio = calculate_experience_matching(cand_exp, jd_exp)
-    
+
     # Years experience normalized to max 25 years
     experience_years_norm = min(cand_exp / 25.0, 1.0)
 
@@ -90,7 +92,12 @@ def build_ltr_features(
     education_match = 0.0
     for edu in education_list:
         degree = str(edu.get("degree", "")).lower()
-        if "bachelor" in degree or "b.s." in degree or "bs" in degree or "degree" in degree:
+        if (
+            "bachelor" in degree
+            or "b.s." in degree
+            or "bs" in degree
+            or "degree" in degree
+        ):
             education_match = 1.0
             break
 
@@ -98,11 +105,18 @@ def build_ltr_features(
     cand_location = str(candidate.get("location", "")).lower()
     jd_location = str(job.get("location", "")).lower()
     location_match = 0.0
-    if not jd_location or "remote" in jd_location or jd_location in cand_location or cand_location in jd_location:
+    if (
+        not jd_location
+        or "remote" in jd_location
+        or jd_location in cand_location
+        or cand_location in jd_location
+    ):
         location_match = 1.0
 
     # 8. Hard Constraint Match
-    all_required_present = all(j.lower() in [c.lower() for c in cand_skills] for j in jd_skills)
+    all_required_present = all(
+        j.lower() in [c.lower() for c in cand_skills] for j in jd_skills
+    )
     hard_constraint_match = 1.0 if all_required_present else 0.0
 
     # 9. Dense & Sparse Similarity Scores

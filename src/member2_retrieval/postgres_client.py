@@ -55,6 +55,7 @@ class PostgresStateClient:
             logger.info("Connected to PostgreSQL successfully.")
         except Exception as e:
             from pathlib import Path
+
             project_root = Path(__file__).resolve().parents[2]
             db_path = project_root / "data" / "nexusmatch.db"
             db_path.parent.mkdir(parents=True, exist_ok=True)
