@@ -200,6 +200,7 @@ def match_candidates(query: MatchQuery):
                 "experience": cand_db.get("experience", []),
             }
             cand_name = cand_db.get("name", cand["payload"].get("name", "Unknown"))
+            cand_name = cand_name.lstrip("# ").strip() or "Unknown Candidate"
         else:
             candidate_data = {
                 "skills": cand["payload"].get("skills", []),
@@ -213,6 +214,7 @@ def match_candidates(query: MatchQuery):
                 ],
             }
             cand_name = cand["payload"].get("name", "Unknown")
+            cand_name = cand_name.lstrip("# ").strip() or "Unknown Candidate"
 
         features = build_ltr_features(candidate_data, job_meta, cand["score"])
         score = ranker.predict_ranking([features])[0]

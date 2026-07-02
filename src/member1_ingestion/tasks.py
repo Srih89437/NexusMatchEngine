@@ -41,9 +41,11 @@ def extract_heuristic_profile(raw_text: str) -> CandidateProfile:
     phone = phone_match.group(0) if phone_match else None
 
     # Simple name finder (e.g., first non-empty line)
+    # Strip markdown heading prefixes produced by Docling DOCX export (# ## ###)
     lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
     name = lines[0] if lines else "Unknown Candidate"
-    if len(name) > 50:
+    name = name.lstrip("# ").strip()  # Remove leading # from Docling markdown export
+    if len(name) > 50 or not name:
         name = "Unknown Candidate"
 
     # Common skills lookup
@@ -62,6 +64,13 @@ def extract_heuristic_profile(raw_text: str) -> CandidateProfile:
         "NumPy",
         "AWS",
         "PyTorch",
+        "LightGBM",
+        "SHAP",
+        "React",
+        "Kubernetes",
+        "JavaScript",
+        "Spark",
+        "CI/CD",
     ]
     skills = []
     for skill in common_skills:
