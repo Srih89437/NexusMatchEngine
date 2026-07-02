@@ -66,14 +66,3 @@ graph TD
    ```bash
    streamlit run src/member4_orchestration/app_ui.py
    ```
-
----
-
-## 🏆 Hackathon Submission Reproduction
-
-To reproduce the candidate ranking submission CSV file from `candidates.jsonl`, run:
-```bash
-python rank.py --candidates ./candidates.jsonl --out ./submission.csv
-```
-The output `submission.csv` contains the top 100 candidates ranked and qualified according to the job description and behavioral signals, validated against the official `validate_submission.py` script.
-
