@@ -1,0 +1,49 @@
+# Redrob Hackathon — Submission Metadata
+#
+# Filled in for NexusMatchEngine submission
+
+team_name: "NexusMatch"
+
+primary_contact:
+  name: "Sri Hari"
+  email: "srih89437@gmail.com"
+  phone: "+91-9999999999"
+
+team_members:
+  - name: "Sri Hari"
+    email: "srih89437@gmail.com"
+    role: "Lead AI Engineer"
+
+github_repo: "https://github.com/Srih89437/NexusMatchEngine"
+
+sandbox_link: "http://localhost:8501"
+
+reproduce_command: "python rank.py --candidates ./candidates.jsonl --out ./submission.csv"
+
+compute:
+  platform: "Local Windows PC"
+  cpu_cores: 8
+  ram_gb: 16
+  python_version: "3.12.13"
+  os: "Windows 11"
+  uses_gpu_for_inference: false
+  has_network_during_ranking: false
+  pre_computation_required: false
+  pre_computation_time_minutes: 0
+
+ai_tools_used:
+  - "Claude"
+  - "Cursor"
+
+ai_usage_summary: |
+  Used Claude (via Antigravity AI Assistant) for codebase preparation, refactoring, and implementing the ranking pipeline.
+
+methodology_summary: |
+  Expert-designed heuristic matching engine combining NLP semantic criteria, experience constraints, consulting firm filters, academic researcher exclusions, and behavioral signals from the Redrob platform.
+
+declarations:
+  read_submission_spec: true
+  code_is_original_work: true
+  no_collusion: true
+  honeypot_check_done: true
+  reproduction_tested: true
