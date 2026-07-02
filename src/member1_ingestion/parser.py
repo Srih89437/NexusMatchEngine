@@ -97,6 +97,15 @@ class DoclingLayoutParser:
                 except Exception as e:
                     logger.error(f"PDF fallback parser failed: {e}")
                     raise docling_err
+            elif suffix == ".docx":
+                try:
+                    import docx
+                    doc = docx.Document(file_path)
+                    text_parts = [p.text for p in doc.paragraphs]
+                    markdown_content = "\n".join(text_parts)
+                except Exception as e:
+                    logger.error(f"DOCX fallback parser failed: {e}")
+                    raise docling_err
             else:
                 # Raise the original error if no fallback is possible
                 raise docling_err

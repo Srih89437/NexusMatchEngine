@@ -95,6 +95,7 @@ class QdrantVectorClient:
             else:
                 self.client = QdrantClient(path="data/qdrant_local")
                 _client_cache[cache_key] = self.client
+            _client_cache[f"server:{self.host}:{self.port}"] = self.client
             try:
                 self.setup_collection()
             except Exception as setup_err:

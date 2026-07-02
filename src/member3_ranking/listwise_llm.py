@@ -38,11 +38,18 @@ class ListwiseLLMRanker:
         self.client = None
         self.llm_available = LLM_AVAILABLE
 
-        if (
-            self.llm_available
-            and self.api_key
-            and self.api_key != "mock-key-for-development"
-        ):
+        is_mock_key = (
+            not self.api_key
+            or self.api_key == "mock-key-for-development"
+            or "your-openai-api-key-here" in self.api_key
+            or "mock-key-for-local-vllm" in self.api_key
+        )
+        is_localhost_loop = (
+            settings.VLLM_API_URL is not None
+            and "localhost:8000" in settings.VLLM_API_URL
+        )
+
+        if self.llm_available and not is_mock_key and not is_localhost_loop:
             try:
                 if settings.VLLM_API_URL:
                     logger.info(f"Using local vLLM server: {settings.VLLM_API_URL}")
@@ -63,7 +70,7 @@ class ListwiseLLMRanker:
                 )
         else:
             logger.warning(
-                "Instructor client or API keys not configured. Fallback ranking active."
+                "Instructor client, API keys, or valid server URLs not configured. Fallback ranking active."
             )
 
     def verify_rationale(self, rationale: str, raw_resume_text: str) -> str:

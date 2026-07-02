@@ -127,9 +127,21 @@ def ingest_resume_pipeline(self, file_path_str: str) -> dict:
         # Check for valid API keys
         api_key = settings.VLLM_API_KEY or settings.OPENAI_API_KEY
         use_fallback = False
-        if not api_key or api_key == "mock-key-for-development":
+        is_mock_key = (
+            not api_key
+            or api_key == "mock-key-for-development"
+            or "your-openai-api-key-here" in api_key
+            or "mock-key-for-local-vllm" in api_key
+        )
+        is_localhost_loop = (
+            settings.VLLM_API_URL is not None
+            and "localhost:8000" in settings.VLLM_API_URL
+        )
+
+        if is_mock_key or is_localhost_loop:
             logger.warning(
-                "Mock or missing API keys detected. Falling back to heuristic profile extraction."
+                "Mock, placeholder, or self-referential localhost API configuration detected. "
+                "Falling back to heuristic profile extraction."
             )
             use_fallback = True
 

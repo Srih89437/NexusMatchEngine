@@ -417,3 +417,76 @@ def download_results_xlsx(job_id: str):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+@app.get("/api/v1/results/{job_id}/download_csv")
+def download_results_csv(job_id: str):
+    pg = get_postgres_client()
+    jd = pg.get_job_description(job_id)
+    if not jd:
+        raise HTTPException(status_code=404, detail="Job description not found")
+
+    query = MatchQuery(
+        job_description_id=job_id,
+        job_text=jd.get("full_text", ""),
+        required_skills=jd.get("required_skills", []),
+        min_experience_years=jd.get("min_experience_years", 0),
+        top_k=20,
+    )
+
+    try:
+        ranked_res = match_candidates(query)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ranking pipeline failure: {e}")
+
+    results = ranked_res.get("results", [])
+    if not results:
+        raise HTTPException(
+            status_code=404, detail="No ranked candidates found for this job ID"
+        )
+
+    import csv
+    from io import StringIO
+
+    stream = StringIO()
+    writer = csv.writer(stream)
+    # Target columns: Candidate ID, Candidate Name, Score, Rank, Reason, SHAP Summary
+    writer.writerow([
+        "Candidate ID",
+        "Candidate Name",
+        "Score",
+        "Rank",
+        "Reason",
+        "SHAP Summary",
+    ])
+
+    for res in results:
+        cand_id = res.get("id")
+
+        # Calculate SHAP Summary
+        shap_values = res.get("shap_values", {})
+        shap_parts = []
+        sorted_shap = sorted(shap_values.items(), key=lambda x: abs(x[1]), reverse=True)
+        for feat, val in sorted_shap[:5]:
+            sign = "+" if val >= 0 else ""
+            shap_parts.append(f"{feat} ({sign}{val:.4f})")
+        shap_str = ", ".join(shap_parts)
+
+        writer.writerow([
+            cand_id,
+            res.get("name"),
+            res.get("ltr_score"),
+            res.get("listwise_rank"),
+            res.get("llm_rationale") or res.get("reasoning", ""),
+            shap_str,
+        ])
+
+    csv_data = stream.getvalue().encode("utf-8")
+    bytes_stream = BytesIO(csv_data)
+
+    filename = "team_nexusmatch.csv"
+    return StreamingResponse(
+        bytes_stream,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

@@ -50,64 +50,44 @@ st.markdown("---")
 
 # Sidebar controls
 st.sidebar.header("📁 Ingestion Panel")
-uploaded_file = st.sidebar.file_uploader(
-    "Upload Candidate Resume (PDF / DOCX)", type=["pdf", "docx"]
+uploaded_files = st.sidebar.file_uploader(
+    "Upload Candidate Resume (PDF / DOCX)", type=["pdf", "docx"], accept_multiple_files=True
 )
-if uploaded_file is not None:
-    if st.sidebar.button("Process Resume"):
-        # Make a real POST request to the FastAPI backend uploader
-        # Timeout set to 120s (2 minutes) to allow full ingestion pipeline to complete
-        files = {
-            "file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)
-        }
-        INGEST_TIMEOUT_SECONDS = 120  # 2-minute timeout
+if uploaded_files:
+    if st.sidebar.button("Process Resumes"):
+        total_files = len(uploaded_files)
+        status_box = st.sidebar.empty()
+        prog_bar = st.sidebar.progress(0, text=f"⏳ Ingesting resumes… 0/{total_files}")
 
-        import threading
-        import time
+        success_count = 0
+        failed_count = 0
 
-        result_holder = {"response": None, "error": None}
-
-        def _post():
+        for idx, uploaded_file in enumerate(uploaded_files):
+            pct = idx / total_files
+            prog_bar.progress(pct, text=f"⏳ Ingesting {uploaded_file.name} ({idx+1}/{total_files})")
+            
+            files = {
+                "file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)
+            }
+            
             try:
-                result_holder["response"] = requests.post(
+                response = requests.post(
                     f"{API_URL}/ingest/resume",
                     files=files,
-                    timeout=INGEST_TIMEOUT_SECONDS,
+                    timeout=125,
                 )
-            except Exception as exc:
-                result_holder["error"] = exc
-
-        thread = threading.Thread(target=_post, daemon=True)
-        thread.start()
-
-        # Show spinner + progress bar while waiting (up to 2 minutes)
-        status_box = st.sidebar.empty()
-        prog_bar = st.sidebar.progress(0, text="⏳ Ingesting resume… 0s / 120s")
-
-        elapsed = 0
-        while thread.is_alive() and elapsed < INGEST_TIMEOUT_SECONDS:
-            time.sleep(1)
-            elapsed += 1
-            pct = elapsed / INGEST_TIMEOUT_SECONDS
-            prog_bar.progress(pct, text=f"⏳ Ingesting resume… {elapsed}s / {INGEST_TIMEOUT_SECONDS}s")
+                if response.status_code == 200:
+                    success_count += 1
+                else:
+                    failed_count += 1
+            except Exception as e:
+                failed_count += 1
 
         prog_bar.empty()
-
-        if result_holder["error"] is not None:
-            status_box.error(f"Error connecting to API server: {result_holder['error']}")
-        elif result_holder["response"] is None:
-            # Thread is still alive → timed out on our side
-            status_box.error(
-                f"⏰ Ingestion did not complete within {INGEST_TIMEOUT_SECONDS}s (2 minutes). "
-                "The pipeline may still be processing in the background."
-            )
+        if failed_count == 0:
+            status_box.success(f"✅ All {success_count} resumes processed successfully!")
         else:
-            response = result_holder["response"]
-            if response.status_code == 200:
-                data = response.json()
-                status_box.success(f"✅ Resume ingested! Task ID: {data.get('task_id')}")
-            else:
-                status_box.error(f"Ingestion failed: {response.text}")
+            status_box.warning(f"Ingestion completed: {success_count} successful, {failed_count} failed.")
 
 # Main dashboard columns
 col1, col2 = st.columns([1, 1])
@@ -165,24 +145,43 @@ with col2:
                         "No matching candidates found in the vector index. Upload resumes first to build the database!"
                     )
                 else:
-                    # Provide XLSX download button
-                    try:
-                        xlsx_res = requests.get(
-                            f"{API_URL}/api/v1/results/{job_id}/download", timeout=10.0
-                        )
-                        if xlsx_res.status_code == 200:
-                            st.download_button(
-                                label="📥 Download Ranked Candidates (.xlsx)",
-                                data=xlsx_res.content,
-                                file_name=f"nexusmatch_results_{job_id}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    # Provide download buttons side-by-side
+                    col_dl1, col_dl2 = st.columns(2)
+                    with col_dl1:
+                        try:
+                            xlsx_res = requests.get(
+                                f"{API_URL}/api/v1/results/{job_id}/download", timeout=10.0
                             )
-                        else:
-                            st.error(
-                                f"Failed to generate Excel download: {xlsx_res.text}"
+                            if xlsx_res.status_code == 200:
+                                st.download_button(
+                                    label="📥 Download Ranked Candidates (.xlsx)",
+                                    data=xlsx_res.content,
+                                    file_name=f"nexusmatch_results_{job_id}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    use_container_width=True,
+                                )
+                            else:
+                                st.error(f"Failed to generate Excel download: {xlsx_res.text}")
+                        except Exception as e:
+                            st.error(f"Error calling download API: {e}")
+
+                    with col_dl2:
+                        try:
+                            csv_res = requests.get(
+                                f"{API_URL}/api/v1/results/{job_id}/download_csv", timeout=10.0
                             )
-                    except Exception as e:
-                        st.error(f"Error calling download API: {e}")
+                            if csv_res.status_code == 200:
+                                st.download_button(
+                                    label="📥 Download team_nexusmatch.csv",
+                                    data=csv_res.content,
+                                    file_name="team_nexusmatch.csv",
+                                    mime="text/csv",
+                                    use_container_width=True,
+                                )
+                            else:
+                                st.error(f"Failed to generate CSV download: {csv_res.text}")
+                        except Exception as e:
+                            st.error(f"Error calling CSV download API: {e}")
 
                 for res in results:
                     with st.container():

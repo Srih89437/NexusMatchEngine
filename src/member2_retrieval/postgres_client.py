@@ -43,27 +43,35 @@ class JobDescriptionModel(Base):
 class PostgresStateClient:
     """Relational storage tier for caching structured entities and logs."""
 
+    _resolved_db_url = None
+
     def __init__(self, db_url: Optional[str] = None):
-        self.db_url = db_url or settings.DATABASE_URL
-
-        try:
-            logger.info("Initializing connection engine...")
-            self.engine = create_engine(self.db_url, pool_pre_ping=True)
-            # Test connection
-            with self.engine.connect() as conn:
-                pass
-            logger.info("Connected to PostgreSQL successfully.")
-        except Exception as e:
-            from pathlib import Path
-
-            project_root = Path(__file__).resolve().parents[2]
-            db_path = project_root / "data" / "nexusmatch.db"
-            db_path.parent.mkdir(parents=True, exist_ok=True)
-            logger.warning(
-                f"PostgreSQL connection to {self.db_url} failed: {e}. Falling back to file-based SQLite database at {db_path}."
-            )
-            self.db_url = f"sqlite:///{db_path}"
+        if PostgresStateClient._resolved_db_url:
+            self.db_url = PostgresStateClient._resolved_db_url
             self.engine = create_engine(self.db_url)
+        else:
+            self.db_url = db_url or settings.DATABASE_URL
+
+            try:
+                logger.info("Initializing connection engine...")
+                self.engine = create_engine(self.db_url, pool_pre_ping=True)
+                # Test connection
+                with self.engine.connect() as conn:
+                    pass
+                logger.info("Connected to PostgreSQL successfully.")
+                PostgresStateClient._resolved_db_url = self.db_url
+            except Exception as e:
+                from pathlib import Path
+
+                project_root = Path(__file__).resolve().parents[2]
+                db_path = project_root / "data" / "nexusmatch.db"
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+                logger.warning(
+                    f"PostgreSQL connection to {self.db_url} failed: {e}. Falling back to file-based SQLite database at {db_path}."
+                )
+                self.db_url = f"sqlite:///{db_path}"
+                self.engine = create_engine(self.db_url)
+                PostgresStateClient._resolved_db_url = self.db_url
 
         self.session_factory = sessionmaker(bind=self.engine)
         self.Session = scoped_session(self.session_factory)
