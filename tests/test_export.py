@@ -167,7 +167,7 @@ def test_csv_export_endpoint(
     mock_llm_inst = MagicMock()
     mock_llm_inst.rerank_list.return_value = [
         {
-            "id": "cand_001",
+            "id": "CAND_0000001",
             "name": "Jane Doe",
             "ltr_score": 0.82,
             "listwise_rank": 1,
@@ -192,13 +192,11 @@ def test_csv_export_endpoint(
     import csv
     reader = csv.reader(lines)
     header = next(reader)
-    expected_header = ["Candidate ID", "Candidate Name", "Score", "Rank", "Reason", "SHAP Summary"]
+    expected_header = ["candidate_id", "rank", "score", "reasoning"]
     assert header == expected_header
 
     row = next(reader)
-    assert row[0] == "cand_001"
-    assert row[1] == "Jane Doe"
+    assert row[0] == "CAND_0000001"
+    assert row[1] == "1"
     assert row[2] == "0.82"
-    assert row[3] == "1"
-    assert row[4] == "Perfect fit."
-    assert "skill_match_score (+0.2500)" in row[5]
+    assert row[3] == "Perfect fit."

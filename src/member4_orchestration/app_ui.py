@@ -112,6 +112,13 @@ with col1:
 
 with col2:
     st.header("🏆 Matched Candidates")
+    
+    candidate_count = metrics.get("total_candidates", 0)
+    btn_disabled = (candidate_count == 0)
+    
+    if btn_disabled:
+        st.warning("⚠️ Please upload at least one candidate resume.")
+        
     if st.button("Run Match Engine Execution Loop", type="primary"):
         if not job_id.strip():
             st.error("⚠️ Please enter a valid Job ID before running the Match Engine.")
@@ -213,6 +220,10 @@ with col2:
                             st.bar_chart(shap_df.set_index("Feature"))
                         st.markdown("---")
             else:
-                st.error(f"Match query failed: {response.text}")
+                try:
+                    error_detail = response.json().get("detail", response.text)
+                except Exception:
+                    error_detail = response.text
+                st.error(f"⚠️ Match query failed: {error_detail}")
         except Exception as e:
             st.error(f"Error querying match API: {e}")

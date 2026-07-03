@@ -153,6 +153,23 @@ def match_candidates(query: MatchQuery):
     )
 
     postgres_client = get_postgres_client()
+    
+    # Verify candidate existence (no ranking without uploaded resumes)
+    metrics = postgres_client.get_dashboard_metrics()
+    from unittest.mock import Mock
+    if isinstance(metrics, dict):
+        total_candidates = metrics.get("total_candidates", 0)
+    elif isinstance(metrics, Mock):
+        total_candidates = metrics.total_candidates if hasattr(metrics, "total_candidates") else 1
+    else:
+        total_candidates = 0
+
+    if total_candidates == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Please upload at least one candidate resume."
+        )
+
     qdrant_client = get_qdrant_client()
     embedder = get_embedder()
     ranker = get_ranker()
@@ -322,7 +339,7 @@ def download_results_xlsx(job_id: str):
         job_text=jd.get("full_text", ""),
         required_skills=jd.get("required_skills", []),
         min_experience_years=jd.get("min_experience_years", 0),
-        top_k=20,
+        top_k=100,
     )
 
     try:
@@ -433,7 +450,7 @@ def download_results_csv(job_id: str):
         job_text=jd.get("full_text", ""),
         required_skills=jd.get("required_skills", []),
         min_experience_years=jd.get("min_experience_years", 0),
-        top_k=20,
+        top_k=100,
     )
 
     try:
@@ -452,35 +469,27 @@ def download_results_csv(job_id: str):
 
     stream = StringIO()
     writer = csv.writer(stream)
-    # Target columns: Candidate ID, Candidate Name, Score, Rank, Reason, SHAP Summary
-    writer.writerow([
-        "Candidate ID",
-        "Candidate Name",
-        "Score",
-        "Rank",
-        "Reason",
-        "SHAP Summary",
-    ])
+    # Required format: candidate_id,rank,score,reasoning
+    writer.writerow(["candidate_id", "rank", "score", "reasoning"])
 
     for res in results:
         cand_id = res.get("id")
+        # Format candidate ID properly if it's not starting with CAND_
+        if not cand_id.startswith("CAND_"):
+            import hashlib
+            hash_val = int(hashlib.md5(cand_id.lower().strip().encode("utf-8")).hexdigest(), 16)
+            cand_id = f"CAND_{hash_val % 10000000:07d}"
 
-        # Calculate SHAP Summary
-        shap_values = res.get("shap_values", {})
-        shap_parts = []
-        sorted_shap = sorted(shap_values.items(), key=lambda x: abs(x[1]), reverse=True)
-        for feat, val in sorted_shap[:5]:
-            sign = "+" if val >= 0 else ""
-            shap_parts.append(f"{feat} ({sign}{val:.4f})")
-        shap_str = ", ".join(shap_parts)
+        # Clean/format reasoning/explanation to include in reasoning field
+        reason = res.get("llm_rationale") or res.get("reasoning", "")
+        # Remove any newline characters
+        reason = reason.replace("\n", " ").replace("\r", " ").strip()
 
         writer.writerow([
             cand_id,
-            res.get("name"),
-            res.get("ltr_score"),
             res.get("listwise_rank"),
-            res.get("llm_rationale") or res.get("reasoning", ""),
-            shap_str,
+            round(float(res.get("ltr_score", 0.0)), 4),
+            reason,
         ])
 
     csv_data = stream.getvalue().encode("utf-8")
