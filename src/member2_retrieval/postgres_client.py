@@ -244,3 +244,19 @@ class PostgresStateClient:
             }
         finally:
             self.Session.remove()
+
+    def clear_all_data(self) -> None:
+        """Clear all records from candidates and job_descriptions tables."""
+        session = self.Session()
+        try:
+            session.query(CandidateModel).delete()
+            session.query(JobDescriptionModel).delete()
+            session.commit()
+            logger.info("All postgres database cache cleared successfully.")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Failed to clear relational database cache: {e}")
+            raise
+        finally:
+            self.Session.remove()
+

@@ -15,6 +15,10 @@ Upload resumes to ingest profiles or enter job requirements below to evaluate ca
 # Backend server address
 API_URL = "http://localhost:8000"
 
+# Initialize session state for tracking resume upload
+if "resumes_uploaded" not in st.session_state:
+    st.session_state["resumes_uploaded"] = False
+
 # 1. Fetch Real-time Dashboard Metrics from PostgreSQL
 try:
     metrics_response = requests.get(f"{API_URL}/metrics", timeout=3.0)
@@ -50,11 +54,23 @@ st.markdown("---")
 
 # Sidebar controls
 st.sidebar.header("📁 Ingestion Panel")
+clear_db = st.sidebar.checkbox("Clear existing database cache", value=True)
+
 uploaded_files = st.sidebar.file_uploader(
     "Upload Candidate Resume (PDF / DOCX)", type=["pdf", "docx"], accept_multiple_files=True
 )
 if uploaded_files:
     if st.sidebar.button("Process Resumes"):
+        if clear_db:
+            try:
+                clear_res = requests.post(f"{API_URL}/clear", timeout=10.0)
+                if clear_res.status_code == 200:
+                    st.sidebar.info("🧹 Existing database cleared successfully.")
+                else:
+                    st.sidebar.error("⚠️ Failed to clear database cache.")
+            except Exception as e:
+                st.sidebar.error(f"Error calling clear API: {e}")
+
         total_files = len(uploaded_files)
         status_box = st.sidebar.empty()
         prog_bar = st.sidebar.progress(0, text=f"⏳ Ingesting resumes… 0/{total_files}")
@@ -86,8 +102,13 @@ if uploaded_files:
         prog_bar.empty()
         if failed_count == 0:
             status_box.success(f"✅ All {success_count} resumes processed successfully!")
+            st.session_state["resumes_uploaded"] = True
+            st.rerun()
         else:
             status_box.warning(f"Ingestion completed: {success_count} successful, {failed_count} failed.")
+            if success_count > 0:
+                st.session_state["resumes_uploaded"] = True
+                st.rerun()
 
 # Main dashboard columns
 col1, col2 = st.columns([1, 1])
@@ -113,13 +134,14 @@ with col1:
 with col2:
     st.header("🏆 Matched Candidates")
     
-    candidate_count = metrics.get("total_candidates", 0)
-    btn_disabled = (candidate_count == 0)
+    # Enable button only if user has uploaded resumes in the session
+    btn_disabled = not st.session_state["resumes_uploaded"]
     
     if btn_disabled:
-        st.warning("⚠️ Please upload at least one candidate resume.")
+        st.warning("⚠️ Please upload and process candidate resumes in the sidebar Ingestion Panel to start the analysis.")
         
-    if st.button("Run Match Engine Execution Loop", type="primary"):
+    if st.button("Run Match Engine Execution Loop", type="primary", disabled=btn_disabled):
+
         if not job_id.strip():
             st.error("⚠️ Please enter a valid Job ID before running the Match Engine.")
             st.stop()

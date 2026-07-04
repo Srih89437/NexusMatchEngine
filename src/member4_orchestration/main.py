@@ -145,7 +145,27 @@ async def ingest_resume(
     return {"status": "queued", "task_id": task.id, "filename": file.filename}
 
 
+@app.post("/clear")
+def clear_database():
+    """Clear all candidate records and vectors from database and vector index."""
+    logger.info("Request received to clear relational database cache and vector index.")
+    try:
+        postgres_client = get_postgres_client()
+        postgres_client.clear_all_data()
+
+        qdrant_client = get_qdrant_client()
+        qdrant_client.clear_collection()
+
+        return {"status": "success", "message": "All data cleared successfully."}
+    except Exception as e:
+        logger.error(f"Failed to clear database and vector index: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Database clearing failed: {e}"
+        )
+
+
 @app.post("/match")
+
 def match_candidates(query: MatchQuery):
     """Perform end-to-end matching: hybrid retrieval -> LambdaMART ranker -> LLM refinement."""
     logger.info(

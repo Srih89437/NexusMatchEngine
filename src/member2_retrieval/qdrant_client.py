@@ -278,3 +278,16 @@ class QdrantVectorClient:
         except Exception as e:
             logger.error(f"Qdrant hybrid search failed: {e}")
             raise
+
+    def clear_collection(self, collection_name: str = settings.QDRANT_COLLECTION) -> None:
+        """Drop collection and setup it again to purge the index."""
+        try:
+            if self.client.collection_exists(collection_name):
+                logger.info(f"Deleting collection '{collection_name}' from Qdrant...")
+                self.client.delete_collection(collection_name)
+            self.setup_collection(collection_name)
+            logger.info("Qdrant collection cleared successfully.")
+        except Exception as e:
+            logger.error(f"Failed to clear Qdrant collection: {e}")
+            raise
+
