@@ -160,13 +160,10 @@ def clear_database():
         return {"status": "success", "message": "All data cleared successfully."}
     except Exception as e:
         logger.error(f"Failed to clear database and vector index: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Database clearing failed: {e}"
-        )
+        raise HTTPException(status_code=500, detail=f"Database clearing failed: {e}")
 
 
 @app.post("/match")
-
 def match_candidates(query: MatchQuery):
     """Perform end-to-end matching: hybrid retrieval -> LambdaMART ranker -> LLM refinement."""
     logger.info(
@@ -174,21 +171,23 @@ def match_candidates(query: MatchQuery):
     )
 
     postgres_client = get_postgres_client()
-    
+
     # Verify candidate existence (no ranking without uploaded resumes)
     metrics = postgres_client.get_dashboard_metrics()
     from unittest.mock import Mock
+
     if isinstance(metrics, dict):
         total_candidates = metrics.get("total_candidates", 0)
     elif isinstance(metrics, Mock):
-        total_candidates = metrics.total_candidates if hasattr(metrics, "total_candidates") else 1
+        total_candidates = (
+            metrics.total_candidates if hasattr(metrics, "total_candidates") else 1
+        )
     else:
         total_candidates = 0
 
     if total_candidates == 0:
         raise HTTPException(
-            status_code=400,
-            detail="Please upload at least one candidate resume."
+            status_code=400, detail="Please upload at least one candidate resume."
         )
 
     qdrant_client = get_qdrant_client()
@@ -498,7 +497,10 @@ def download_results_csv(job_id: str):
         # Format candidate ID properly if it's not starting with CAND_
         if not cand_id.startswith("CAND_"):
             import hashlib
-            hash_val = int(hashlib.md5(cand_id.lower().strip().encode("utf-8")).hexdigest(), 16)
+
+            hash_val = int(
+                hashlib.md5(cand_id.lower().strip().encode("utf-8")).hexdigest(), 16
+            )
             cand_id = f"CAND_{hash_val % 10000000:07d}"
 
         # Clean/format reasoning/explanation to include in reasoning field
@@ -506,12 +508,14 @@ def download_results_csv(job_id: str):
         # Remove any newline characters
         reason = reason.replace("\n", " ").replace("\r", " ").strip()
 
-        writer.writerow([
-            cand_id,
-            res.get("listwise_rank"),
-            round(float(res.get("ltr_score", 0.0)), 4),
-            reason,
-        ])
+        writer.writerow(
+            [
+                cand_id,
+                res.get("listwise_rank"),
+                round(float(res.get("ltr_score", 0.0)), 4),
+                reason,
+            ]
+        )
 
     csv_data = stream.getvalue().encode("utf-8")
     bytes_stream = BytesIO(csv_data)

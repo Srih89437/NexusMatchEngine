@@ -181,8 +181,12 @@ def test_csv_export_endpoint(
     response = client.get("/api/v1/results/job_101/download_csv")
     assert response.status_code == 200
     from src.config import settings
+
     expected_filename = f"{settings.PROJECT_NAME.lower().replace(' ', '_')}_results.csv"
-    assert f"attachment; filename={expected_filename}" in response.headers["content-disposition"]
+    assert (
+        f"attachment; filename={expected_filename}"
+        in response.headers["content-disposition"]
+    )
 
     # Verify that the downloaded file contains the correct CSV rows
     content = response.content.decode("utf-8")
@@ -190,6 +194,7 @@ def test_csv_export_endpoint(
     assert len(lines) == 2  # Header + 1 candidate
 
     import csv
+
     reader = csv.reader(lines)
     header = next(reader)
     expected_header = ["candidate_id", "rank", "score", "reasoning"]

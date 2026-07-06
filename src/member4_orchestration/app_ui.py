@@ -64,7 +64,9 @@ st.sidebar.header("📁 Ingestion Panel")
 clear_db = st.sidebar.checkbox("Clear existing database cache", value=True)
 
 uploaded_files = st.sidebar.file_uploader(
-    "Upload Candidate Resume (PDF / DOCX)", type=["pdf", "docx"], accept_multiple_files=True
+    "Upload Candidate Resume (PDF / DOCX)",
+    type=["pdf", "docx"],
+    accept_multiple_files=True,
 )
 if uploaded_files:
     if st.sidebar.button("Process Resumes"):
@@ -89,12 +91,18 @@ if uploaded_files:
 
         for idx, uploaded_file in enumerate(uploaded_files):
             pct = idx / total_files
-            prog_bar.progress(pct, text=f"⏳ Ingesting {uploaded_file.name} ({idx+1}/{total_files})")
-            
+            prog_bar.progress(
+                pct, text=f"⏳ Ingesting {uploaded_file.name} ({idx+1}/{total_files})"
+            )
+
             files = {
-                "file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)
+                "file": (
+                    uploaded_file.name,
+                    uploaded_file.getvalue(),
+                    uploaded_file.type,
+                )
             }
-            
+
             try:
                 response = requests.post(
                     f"{API_URL}/ingest/resume",
@@ -110,11 +118,15 @@ if uploaded_files:
 
         prog_bar.empty()
         if failed_count == 0:
-            status_box.success(f"✅ All {success_count} resumes processed successfully!")
+            status_box.success(
+                f"✅ All {success_count} resumes processed successfully!"
+            )
             st.session_state["resumes_uploaded"] = True
             st.rerun()
         else:
-            status_box.warning(f"Ingestion completed: {success_count} successful, {failed_count} failed.")
+            status_box.warning(
+                f"Ingestion completed: {success_count} successful, {failed_count} failed."
+            )
             if success_count > 0:
                 st.session_state["resumes_uploaded"] = True
                 st.rerun()
@@ -142,30 +154,36 @@ with col1:
 
 with col2:
     total_candidates = metrics.get("total_candidates", 0)
-    
+
     if total_candidates > 0:
         st.header("🏆 Matched Candidates")
-    
+
     if st.button("Run Match Engine Execution Loop", type="primary"):
         # Validate that a resume has been uploaded by checking the metrics candidates count
         if total_candidates == 0:
             st.error("Please upload a resume before running the Match Engine.")
             st.stop()
- 
+
         if not job_id.strip():
             st.error("⚠️ Please enter a valid Job ID before running the Match Engine.")
             st.stop()
         if not jd_text.strip():
-            st.error("⚠️ Please enter the Job Description before running the Match Engine.")
+            st.error(
+                "⚠️ Please enter the Job Description before running the Match Engine."
+            )
             st.stop()
- 
-        skills_list = [s.strip() for s in skills_required.split(",")] if skills_required.strip() else []
- 
+
+        skills_list = (
+            [s.strip() for s in skills_required.split(",")]
+            if skills_required.strip()
+            else []
+        )
+
         # Show processing logs/animations ONLY during real execution
         st.write("🔍 Running BGE-M3 Dense/Sparse embedding generations...")
         st.write("🛰️ Querying Qdrant index vector partitions...")
         st.write("⚡ Computing LambdaMART feature engineering matrices...")
- 
+
         # Make a real POST request to match candidates
         payload = {
             "job_description_id": job_id,
@@ -174,7 +192,7 @@ with col2:
             "min_experience_years": min_exp,
             "top_k": 5,
         }
- 
+
         try:
             with st.spinner("Executing matches..."):
                 response = requests.post(f"{API_URL}/match", json=payload, timeout=20.0)
@@ -183,7 +201,9 @@ with col2:
                     if not results:
                         st.session_state["match_results"] = None
                         st.session_state["match_job_id"] = None
-                        st.warning("No matching candidates found in the vector index. Upload resumes first to build the database!")
+                        st.warning(
+                            "No matching candidates found in the vector index. Upload resumes first to build the database!"
+                        )
                     else:
                         st.session_state["match_results"] = results
                         st.session_state["match_job_id"] = job_id
@@ -200,20 +220,28 @@ with col2:
             st.session_state["match_results"] = None
             st.session_state["match_job_id"] = None
             st.error(f"Error querying match API: {e}")
- 
+
     # Render persistent results if they exist in session state
-    has_results = (st.session_state["match_results"] is not None and st.session_state["match_job_id"] == job_id)
- 
+    has_results = (
+        st.session_state["match_results"] is not None
+        and st.session_state["match_job_id"] == job_id
+    )
+
     if has_results:
         results = st.session_state["match_results"]
         # Candidate Score Comparison Chart
         st.write("### 📈 Candidate Score Comparison")
-        chart_data = pd.DataFrame([
-            {"Candidate": f"{res.get('name')} ({res.get('id')})", "Final Score": res.get("ltr_score", 0.0)}
-            for res in results
-        ])
+        chart_data = pd.DataFrame(
+            [
+                {
+                    "Candidate": f"{res.get('name')} ({res.get('id')})",
+                    "Final Score": res.get("ltr_score", 0.0),
+                }
+                for res in results
+            ]
+        )
         st.bar_chart(chart_data.set_index("Candidate"))
- 
+
         # Export buttons shown only after the graph is successfully rendered and visible
         col_dl1, col_dl2 = st.columns(2)
         with col_dl1:
@@ -228,13 +256,13 @@ with col2:
                         file_name=f"match_results_{job_id}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True,
-                        key="xlsx_active"
+                        key="xlsx_active",
                     )
                 else:
                     st.error(f"Failed to generate Excel download: {xlsx_res.text}")
             except Exception as e:
                 st.error(f"Error calling download API: {e}")
- 
+
         with col_dl2:
             try:
                 csv_res = requests.get(
@@ -247,13 +275,13 @@ with col2:
                         file_name=f"match_results_{job_id}.csv",
                         mime="text/csv",
                         use_container_width=True,
-                        key="csv_active"
+                        key="csv_active",
                     )
                 else:
                     st.error(f"Failed to generate CSV download: {csv_res.text}")
             except Exception as e:
                 st.error(f"Error calling CSV download API: {e}")
- 
+
         for res in results:
             with st.container():
                 st.write(
@@ -265,7 +293,7 @@ with col2:
                 st.write(
                     f"**LLM Explainability Rationale:** {res.get('llm_rationale')}"
                 )
- 
+
                 # Render actual feature importance charts (SHAP)
                 shap_values = res.get("shap_values", {})
                 if shap_values:
@@ -276,4 +304,6 @@ with col2:
                     st.bar_chart(shap_df.set_index("Feature"))
                 st.markdown("---")
     else:
-        st.info("No matching data available. Upload a resume and run the Match Engine to generate results.")
+        st.info(
+            "No matching data available. Upload a resume and run the Match Engine to generate results."
+        )
