@@ -1,13 +1,14 @@
 import streamlit as st
 import pandas as pd
 import requests
+from src.config import settings
 
-st.set_page_config(page_title="NexusMatch Engine Dashboard", layout="wide")
+st.set_page_config(page_title="Analysis Dashboard", layout="wide")
 
-st.title("🎯 NexusMatch Engine Analytics Panel")
+st.title("🎯 Analysis Dashboard")
 st.subheader("Interactive Talent Matching, LTR Re-ranking, and Explainability Studio")
 
-st.markdown("""
+st.markdown(f"""
 This interface interacts with the FastAPI backend orchestration layer. 
 Upload resumes to ingest profiles or enter job requirements below to evaluate candidates in real-time.
 """)
@@ -52,6 +53,12 @@ with m_col4:
 
 st.markdown("---")
 
+# Initialize session state for match results
+if "match_results" not in st.session_state:
+    st.session_state["match_results"] = None
+if "match_job_id" not in st.session_state:
+    st.session_state["match_job_id"] = None
+
 # Sidebar controls
 st.sidebar.header("📁 Ingestion Panel")
 clear_db = st.sidebar.checkbox("Clear existing database cache", value=True)
@@ -62,6 +69,8 @@ uploaded_files = st.sidebar.file_uploader(
 if uploaded_files:
     if st.sidebar.button("Process Resumes"):
         if clear_db:
+            st.session_state["match_results"] = None
+            st.session_state["match_job_id"] = None
             try:
                 clear_res = requests.post(f"{API_URL}/clear", timeout=10.0)
                 if clear_res.status_code == 200:
@@ -132,29 +141,31 @@ with col1:
     min_exp = st.slider("Min Years of Experience", 0, 15, 5)
 
 with col2:
-    st.header("🏆 Matched Candidates")
+    total_candidates = metrics.get("total_candidates", 0)
     
-    # Enable button only if user has uploaded resumes in the session
-    btn_disabled = not st.session_state["resumes_uploaded"]
+    if total_candidates > 0:
+        st.header("🏆 Matched Candidates")
     
-    if btn_disabled:
-        st.warning("⚠️ Please upload and process candidate resumes in the sidebar Ingestion Panel to start the analysis.")
-        
-    if st.button("Run Match Engine Execution Loop", type="primary", disabled=btn_disabled):
-
+    if st.button("Run Match Engine Execution Loop", type="primary"):
+        # Validate that a resume has been uploaded by checking the metrics candidates count
+        if total_candidates == 0:
+            st.error("Please upload a resume before running the Match Engine.")
+            st.stop()
+ 
         if not job_id.strip():
             st.error("⚠️ Please enter a valid Job ID before running the Match Engine.")
             st.stop()
         if not jd_text.strip():
             st.error("⚠️ Please enter the Job Description before running the Match Engine.")
             st.stop()
-
+ 
         skills_list = [s.strip() for s in skills_required.split(",")] if skills_required.strip() else []
-
+ 
+        # Show processing logs/animations ONLY during real execution
         st.write("🔍 Running BGE-M3 Dense/Sparse embedding generations...")
         st.write("🛰️ Querying Qdrant index vector partitions...")
         st.write("⚡ Computing LambdaMART feature engineering matrices...")
-
+ 
         # Make a real POST request to match candidates
         payload = {
             "job_description_id": job_id,
@@ -163,89 +174,106 @@ with col2:
             "min_experience_years": min_exp,
             "top_k": 5,
         }
-
+ 
         try:
-            response = requests.post(f"{API_URL}/match", json=payload, timeout=10.0)
-            if response.status_code == 200:
-                results = response.json().get("results", [])
-
-                if not results:
-                    st.warning(
-                        "No matching candidates found in the vector index. Upload resumes first to build the database!"
+            with st.spinner("Executing matches..."):
+                response = requests.post(f"{API_URL}/match", json=payload, timeout=20.0)
+                if response.status_code == 200:
+                    results = response.json().get("results", [])
+                    if not results:
+                        st.session_state["match_results"] = None
+                        st.session_state["match_job_id"] = None
+                        st.warning("No matching candidates found in the vector index. Upload resumes first to build the database!")
+                    else:
+                        st.session_state["match_results"] = results
+                        st.session_state["match_job_id"] = job_id
+                        st.rerun()
+                else:
+                    st.session_state["match_results"] = None
+                    st.session_state["match_job_id"] = None
+                    try:
+                        error_detail = response.json().get("detail", response.text)
+                    except Exception:
+                        error_detail = response.text
+                    st.error(f"⚠️ Match query failed: {error_detail}")
+        except Exception as e:
+            st.session_state["match_results"] = None
+            st.session_state["match_job_id"] = None
+            st.error(f"Error querying match API: {e}")
+ 
+    # Render persistent results if they exist in session state
+    has_results = (st.session_state["match_results"] is not None and st.session_state["match_job_id"] == job_id)
+ 
+    if has_results:
+        results = st.session_state["match_results"]
+        # Candidate Score Comparison Chart
+        st.write("### 📈 Candidate Score Comparison")
+        chart_data = pd.DataFrame([
+            {"Candidate": f"{res.get('name')} ({res.get('id')})", "Final Score": res.get("ltr_score", 0.0)}
+            for res in results
+        ])
+        st.bar_chart(chart_data.set_index("Candidate"))
+ 
+        # Export buttons shown only after the graph is successfully rendered and visible
+        col_dl1, col_dl2 = st.columns(2)
+        with col_dl1:
+            try:
+                xlsx_res = requests.get(
+                    f"{API_URL}/api/v1/results/{job_id}/download", timeout=10.0
+                )
+                if xlsx_res.status_code == 200:
+                    st.download_button(
+                        label="📥 Download Match Results (.xlsx)",
+                        data=xlsx_res.content,
+                        file_name=f"match_results_{job_id}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="xlsx_active"
                     )
                 else:
-                    # Provide download buttons side-by-side
-                    col_dl1, col_dl2 = st.columns(2)
-                    with col_dl1:
-                        try:
-                            xlsx_res = requests.get(
-                                f"{API_URL}/api/v1/results/{job_id}/download", timeout=10.0
-                            )
-                            if xlsx_res.status_code == 200:
-                                st.download_button(
-                                    label="📥 Download Ranked Candidates (.xlsx)",
-                                    data=xlsx_res.content,
-                                    file_name=f"nexusmatch_results_{job_id}.xlsx",
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                    use_container_width=True,
-                                )
-                            else:
-                                st.error(f"Failed to generate Excel download: {xlsx_res.text}")
-                        except Exception as e:
-                            st.error(f"Error calling download API: {e}")
-
-                    with col_dl2:
-                        try:
-                            csv_res = requests.get(
-                                f"{API_URL}/api/v1/results/{job_id}/download_csv", timeout=10.0
-                            )
-                            if csv_res.status_code == 200:
-                                st.download_button(
-                                    label="📥 Download team_nexusmatch.csv",
-                                    data=csv_res.content,
-                                    file_name="team_nexusmatch.csv",
-                                    mime="text/csv",
-                                    use_container_width=True,
-                                )
-                            else:
-                                st.error(f"Failed to generate CSV download: {csv_res.text}")
-                        except Exception as e:
-                            st.error(f"Error calling CSV download API: {e}")
-
-                    # Candidate Score Comparison Chart
-                    st.write("### 📈 Candidate Score Comparison")
-                    chart_data = pd.DataFrame([
-                        {"Candidate": f"{res.get('name')} ({res.get('id')})", "Final Score": res.get("ltr_score", 0.0)}
-                        for res in results
-                    ])
-                    st.bar_chart(chart_data.set_index("Candidate"))
-
-                for res in results:
-                    with st.container():
-                        st.write(
-                            f"### Rank {res.get('listwise_rank', 'N/A')}: {res.get('name')} ({res.get('id')})"
-                        )
-                        st.write(
-                            f"**Final Rerank Score:** `{res.get('ltr_score', 0.0):.4f}` (Initial Similarity: `{res.get('initial_score', 0.0):.4f}`)"
-                        )
-                        st.write(
-                            f"**LLM Explainability Rationale:** {res.get('llm_rationale')}"
-                        )
-
-                        # Render actual feature importance charts (SHAP)
-                        shap_values = res.get("shap_values", {})
-                        if shap_values:
-                            shap_df = pd.DataFrame(
-                                list(shap_values.items()),
-                                columns=["Feature", "Impact (SHAP)"],
-                            )
-                            st.bar_chart(shap_df.set_index("Feature"))
-                        st.markdown("---")
-            else:
-                try:
-                    error_detail = response.json().get("detail", response.text)
-                except Exception:
-                    error_detail = response.text
-                st.error(f"⚠️ Match query failed: {error_detail}")
-        except Exception as e:
-            st.error(f"Error querying match API: {e}")
+                    st.error(f"Failed to generate Excel download: {xlsx_res.text}")
+            except Exception as e:
+                st.error(f"Error calling download API: {e}")
+ 
+        with col_dl2:
+            try:
+                csv_res = requests.get(
+                    f"{API_URL}/api/v1/results/{job_id}/download_csv", timeout=10.0
+                )
+                if csv_res.status_code == 200:
+                    st.download_button(
+                        label="📥 Download Match Results (CSV)",
+                        data=csv_res.content,
+                        file_name=f"match_results_{job_id}.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                        key="csv_active"
+                    )
+                else:
+                    st.error(f"Failed to generate CSV download: {csv_res.text}")
+            except Exception as e:
+                st.error(f"Error calling CSV download API: {e}")
+ 
+        for res in results:
+            with st.container():
+                st.write(
+                    f"### Rank {res.get('listwise_rank', 'N/A')}: {res.get('name')} ({res.get('id')})"
+                )
+                st.write(
+                    f"**Final Rerank Score:** `{res.get('ltr_score', 0.0):.4f}` (Initial Similarity: `{res.get('initial_score', 0.0):.4f}`)"
+                )
+                st.write(
+                    f"**LLM Explainability Rationale:** {res.get('llm_rationale')}"
+                )
+ 
+                # Render actual feature importance charts (SHAP)
+                shap_values = res.get("shap_values", {})
+                if shap_values:
+                    shap_df = pd.DataFrame(
+                        list(shap_values.items()),
+                        columns=["Feature", "Impact (SHAP)"],
+                    )
+                    st.bar_chart(shap_df.set_index("Feature"))
+                st.markdown("---")
+    else:
+        st.info("No matching data available. Upload a resume and run the Match Engine to generate results.")

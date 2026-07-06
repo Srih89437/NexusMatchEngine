@@ -11,7 +11,7 @@ pydantic-settings>=2.3.0
 instructor>=1.0.0
 SQLAlchemy>=2.0.23
 psycopg2-binary>=2.9.9
-lightgbm==4.1.0
+lightgbm>=4.3.0
 shap>=0.45.0
 requests>=2.32.3
 python-multipart==0.0.6

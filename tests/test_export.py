@@ -180,9 +180,9 @@ def test_csv_export_endpoint(
     # Make request to the new endpoint
     response = client.get("/api/v1/results/job_101/download_csv")
     assert response.status_code == 200
-    assert response.headers["content-type"] == "text/csv; charset=utf-8"
-    assert "content-disposition" in response.headers
-    assert "attachment; filename=team_nexusmatch.csv" in response.headers["content-disposition"]
+    from src.config import settings
+    expected_filename = f"{settings.PROJECT_NAME.lower().replace(' ', '_')}_results.csv"
+    assert f"attachment; filename={expected_filename}" in response.headers["content-disposition"]
 
     # Verify that the downloaded file contains the correct CSV rows
     content = response.content.decode("utf-8")

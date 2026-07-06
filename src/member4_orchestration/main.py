@@ -20,6 +20,7 @@ from src.member2_retrieval.embedder import BGEM3Embedder
 from src.member3_ranking.feature_engineering import build_ltr_features
 from src.member3_ranking.ranker import LightGBMRanker
 from src.member3_ranking.listwise_llm import ListwiseLLMRanker
+from src.config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -515,7 +516,7 @@ def download_results_csv(job_id: str):
     csv_data = stream.getvalue().encode("utf-8")
     bytes_stream = BytesIO(csv_data)
 
-    filename = "team_nexusmatch.csv"
+    filename = f"{settings.PROJECT_NAME.lower().replace(' ', '_')}_results.csv"
     return StreamingResponse(
         bytes_stream,
         media_type="text/csv",
