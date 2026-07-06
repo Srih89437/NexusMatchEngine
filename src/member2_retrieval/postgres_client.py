@@ -259,4 +259,3 @@ class PostgresStateClient:
             raise
         finally:
             self.Session.remove()
-

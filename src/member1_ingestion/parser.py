@@ -100,6 +100,7 @@ class DoclingLayoutParser:
             elif suffix == ".docx":
                 try:
                     import docx
+
                     doc = docx.Document(file_path)
                     text_parts = [p.text for p in doc.paragraphs]
                     markdown_content = "\n".join(text_parts)
